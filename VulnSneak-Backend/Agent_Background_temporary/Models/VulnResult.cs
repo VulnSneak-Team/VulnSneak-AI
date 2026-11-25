@@ -8,21 +8,21 @@ namespace Agent_Background_temporary.Models
         public int Id { get; set; }
 
         public int VulnTypeId { get; set; }
-        public VulnType VulnType { get; set; } = null!;
+        public VulnType? VulnType { get; set; }
 
         public int ScanId { get; set; }
-        public ScanSession ScanSession { get; set; } = null!;
+        public ScanSession? ScanSession { get; set; }
 
         public int StartLine { get; set; }
         public int EndLine { get; set; }
         public string? CodeSnippet { get; set; }
-        public double Confidence { get; /*internal*/ set; }
-        public string? RepairedCode { get; /*internal*/ set; }
-        public string? Explanation { get; /*internal*/ set; }
-        public string? ModelUsed { get; /*internal*/ set; }
-        public bool RepairSuccess { get; /*internal*/ set; }
+        public double Confidence { get; set; }
+        public string? RepairedCode { get; set; }
+        public string? Explanation { get; set; }
+        public string? ModelUsed { get; set; }
+        public bool RepairSuccess { get; set; }
         public string? RepairError { get; set; }
-        public double ElapsedSecs { get; /*internal*/ set; }
+        public double ElapsedSecs { get; set; }
 
         public string? VulnLinesJson { get; set; } // "[37, 45, 52, 61]"
 

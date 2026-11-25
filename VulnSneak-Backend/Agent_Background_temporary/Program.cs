@@ -1,9 +1,10 @@
 using Agent_Background_temporary.Models;
-using Agent_Services.Models;
+using Agent_Background_temporary.Repository;
+using Agent_Background_temporary.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using System.Text;
 
 namespace Agent_Services
@@ -22,6 +23,9 @@ namespace Agent_Services
             builder.Services.AddHttpClient();
 
             builder.Services.AddControllers();
+            builder.Services.AddScoped<UnitRepositroy>();
+            builder.Services.AddScoped<UnitServices>();
+
             builder.Services.AddDbContext<AppDbContext>(options =>
             {
                 options.UseSqlServer(builder.Configuration.GetConnectionString("constr"));
@@ -43,44 +47,61 @@ namespace Agent_Services
                     ValidAudience = builder.Configuration["Jwt:Audience"],
                     IssuerSigningKey =
                         new SymmetricSecurityKey(
-                            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"])
+                            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)
                     )
                 };
 
             });
-            builder.Services.AddCors(options =>
-            {
-                options.AddPolicy("MyPolicy", policy =>
-                {
-                    policy.AllowAnyOrigin()
-                        .AllowAnyHeader()
-                        .AllowAnyMethod();
-                }
-                );
-            });
-
-
             //builder.Services.AddCors(options =>
             //{
             //    options.AddPolicy("MyPolicy", policy =>
             //    {
-            //        policy.WithOrigins(builder.Configuration["AllowedCors:Frontend"])
-            //              .AllowAnyHeader()
-            //              .AllowAnyMethod();
-            //    });
+            //        policy.AllowAnyOrigin()
+            //            .AllowAnyHeader()
+            //            .AllowAnyMethod();
+            //    }
+            //    );
             //});
 
-            builder.Services.AddOpenApi();
 
-            var app = builder.Build();
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("MyPolicy", policy =>
+                {
+                    policy.WithOrigins(builder.Configuration["AllowedCors:Frontend"]!)
+                          .AllowAnyHeader()
+                          .AllowAnyMethod();
+                });
+            });
+
+            builder.Services.AddEndpointsApiExplorer();
+            builder.Services.AddSwaggerGen(options =>
+            {
+                options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+                {
+                    Name = "Authorization",
+                    Type = SecuritySchemeType.Http,
+                    Scheme = "bearer",
+                    BearerFormat = "JWT",
+                    In = ParameterLocation.Header,
+                    Description = "Enter JWT token"
+                });
+
+                options.AddSecurityRequirement(document =>
+                    new OpenApiSecurityRequirement
+                    {
+                        [new OpenApiSecuritySchemeReference("Bearer", document)] = []
+                    });
+            }); var app = builder.Build();
 
             if (app.Environment.IsDevelopment())
             {
-                app.MapOpenApi();
+                app.UseSwagger();
+                app.UseSwaggerUI();
             }
 
 
-            //app.UseHttpsRedirection();
+            app.UseHttpsRedirection();
 
             app.UseCors("MyPolicy");
 

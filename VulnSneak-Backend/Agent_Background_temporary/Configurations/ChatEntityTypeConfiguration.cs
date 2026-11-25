@@ -1,9 +1,10 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Agent_Background_temporary.Models;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Agent_Background_temporary.Configurations
 {
-    public class ChatEntityTypeConfiguration: IEntityTypeConfiguration<Chat>
+    public class ChatEntityTypeConfiguration : IEntityTypeConfiguration<Chat>
     {
         public void Configure(EntityTypeBuilder<Chat> builder)
         {
@@ -22,7 +23,7 @@ namespace Agent_Background_temporary.Configurations
             builder.Property(C => C.ChatFolderPath)
                 .IsRequired()
                 .HasMaxLength(500);
-            
+
             builder
                 .HasIndex(C => C.UserId);
 

@@ -1,92 +1,58 @@
 ﻿using Agent_Background_temporary.Dtos;
 using Agent_Background_temporary.Models;
+using Agent_Background_temporary.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
-namespace Agent_Services.Controllers
+namespace Agent_Background_temporary.Controllers
 {
     [Route("api/v1/[controller]")]  // api/v1/Chat
     [ApiController]
     [Authorize]
     public class ChatController : ControllerBase
     {
-        private AppDbContext Context;
-        private readonly string _basePath;
-        public ChatController(AppDbContext _context, IConfiguration configuration)
+        private readonly UnitServices _unitServices;
+        private int UserId
         {
-            Context = _context;
-            _basePath = configuration["FileStorage:BasePath"]
-                ?? throw new InvalidOperationException("FileStorage:BasePath is not configured.");
+            get
+            {
+                if (field == default)
+                    int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value, out field);
+                return field;
+            }
+        }
+        public ChatController(UnitServices unitServices)
+        {
+            _unitServices = unitServices;
         }
 
         [HttpGet("GetAllChats")]  // GET  api/v1/Chat/GetAllChats
-        public IActionResult GetAllChats()
+        public async Task<IActionResult> GetAllChatsAsync()
         {
-            int userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            User? user = await _unitServices.userService.GetUserAsync(UserId);
+            if (user == null)
+                return Unauthorized();
 
-            var chatDtos = Context.Chats
-                .AsNoTracking()
-                .Where(C => C.UserId == userId)
-                .OrderByDescending(C => C.CreatedAt)
-                .Select(chat => new ChatDto
-                {
-                    ChatId = chat.Id,
-                    ChatName = chat.ChatName,
-                    CreatedAt = chat.CreatedAt
-                }).ToList();
+            List<ChatDto> chatDtos = await _unitServices.chatService.GetAllChatsAsync(UserId);
 
             return Ok(chatDtos);
         }
 
 
         [HttpPost]  // POST  api/v1/Chat  
-        public async Task<IActionResult> AddChatAsync([FromBody] ChatDto chatDto)
+        public async Task<IActionResult> AddChatAsync(ChatDto chatDto)
         {
             if (string.IsNullOrWhiteSpace(chatDto?.ChatName))
                 return BadRequest(new { message = "Chat name is required." });
 
-            int userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
-
-            var user = await Context.Users
-                .AsNoTracking()
-                .Where(u => u.Id == userId)
-                .Select(u => new { u.Id, u.Fname, u.Lname })
-                .FirstOrDefaultAsync();
+            User? user = await _unitServices.userService.GetUserAsync(UserId);
 
             if (user is null)
-                return Unauthorized(new { message = "User not found." });
+                return Unauthorized();
 
-            string userFolder = $"{user.Id}_{SanitizeForPath(user.Fname)}_{SanitizeForPath(user.Lname)}";
-
-            var chat = new Chat
-            {
-                UserId = userId,
-                ChatName = chatDto.ChatName,
-                ChatFolderPath = "",
-                CreatedAt = DateTime.UtcNow
-            };
-
-            Context.Chats.Add(chat);
-            await Context.SaveChangesAsync();
-
-            string chatFolder = $"{chat.Id}_{SanitizeForPath(chat.ChatName)}";
-            string chatFolderPath = Path.Combine(_basePath, userFolder, chatFolder);
-
-            try
-            {
-                Directory.CreateDirectory(chatFolderPath);
-                chat.ChatFolderPath = chatFolderPath;
-                await Context.SaveChangesAsync();
-            }
-            catch (Exception)
-            {
-                Context.Chats.Remove(chat);
-                await Context.SaveChangesAsync();
-
-                return StatusCode(500, new { message = "Failed to create chat storage. Please try again later." });
-            }
+            Chat? chat = await _unitServices.chatService.AddChatAsync(user, chatDto);
+            await _unitServices.SaveInDataBaseAsync();
 
             return Ok(new ChatDto
             {
@@ -103,136 +69,76 @@ namespace Agent_Services.Controllers
             if (chatId <= 0)
                 return BadRequest(new { message = "Invalid chat ID." });
 
-            int userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            User? user = await _unitServices.userService.GetUserAsync(UserId);
+            Chat? chat = await _unitServices.chatService.GetChatAsync(UserId, chatId);
 
-            bool chatExists = await Context.Chats
-                .AsNoTracking()
-                .AnyAsync(c => c.Id == chatId && c.UserId == userId);
+            if (user == null)
+                return Unauthorized();
 
-            if (!chatExists)
-                return NotFound(new { message = "Chat not found." });
+            if (chat == null)
+                return NotFound();
 
-            var scanSessions = await Context.ScanSessions
-                .AsNoTracking()
-                .Where(s => s.ChatId == chatId)
-                .Include(s => s.FileReport)
-                .Include(s => s.VulnResults)
-                    .ThenInclude(v => v.VulnType)
-                .OrderBy(s => s.CreatedAt)
-                .ToListAsync();
+            List<MessageDto> scanSessions = await _unitServices.scanSessionService.GetAllSessionsAsync(chatId);
 
-            if (!scanSessions.Any())
+            if (scanSessions == null)
                 return Ok(Enumerable.Empty<MessageDto>());
 
-            var messageDtos = await Task.WhenAll(scanSessions.Select(MapToMessageDtoAsync));
-
-            return Ok(messageDtos);
+            return Ok(scanSessions);
         }
-
-        public static async Task<MessageDto> MapToMessageDtoAsync(ScanSession session)
-        {
-            var messageDto = new MessageDto
-            {
-                ContentType = session.ContentType,
-                FileName = session.FileName,
-                File = await TryReadFileAsync(session.FilePath),
-                FileReportName = session.FileReport?.FileReportName,
-                FileReport = await TryReadFileAsync(session.FileReport?.FileReportPath),
-                Status = session.Status ? "Vulnerable" : "Safe",
-                CreatedAt = session.CreatedAt,
-                VulnDtos = session.VulnResults?
-                    .Select(v => new VulnDto
-                    {
-                        Vulnerability_name = v.VulnType.VulnName,
-                        Comment = v.VulnType.Description,
-                        Severity = v.VulnType.Severity.ToString(),
-                        StartLine = v.StartLine,
-                        EndLine = v.EndLine,
-                        CodeSnippet = v.CodeSnippet,
-                        Confidence = v.Confidence,
-                        RepairedCode = v.RepairedCode,
-                        Explanation = v.Explanation,
-                        ModelUsed = v.ModelUsed,
-                        RepairSuccess = v.RepairSuccess,
-                        RepairError = v.RepairError,
-                        ElapsedSecs = v.ElapsedSecs,
-                        VulnLines = v.VulnLines,
-                    })
-                    .ToList() ?? new List<VulnDto>()
-            };
-
-            return messageDto;
-        }
-
-        private static async Task<byte[]?> TryReadFileAsync(string? path)
-        {
-            if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
-                return null;
-
-            return await System.IO.File.ReadAllBytesAsync(path);
-        }
-
 
         [HttpPut("Rename")]  //  PUT  api/v1/Chat/Rename
-        public async Task<IActionResult> RenameChatAsync([FromBody] ChatDto chatDto)
+        public async Task<IActionResult> RenameChatAsync(ChatDto chatDto)
         {
             if (string.IsNullOrWhiteSpace(chatDto.ChatName) || chatDto.ChatId <= 0)
-                return BadRequest(new {message = "Try Again"});
+                return BadRequest(new { message = "Try Again" });
 
-            int userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
-            int NumRowEff = await Context.Chats
-                .Where(C => C.Id == chatDto.ChatId && C.UserId == userId)
-                .ExecuteUpdateAsync(S => 
-                    S.SetProperty(C => C.ChatName, chatDto.ChatName));
+            User? user = await _unitServices.userService.GetUserAsync(UserId);
+            Chat? chat = await _unitServices.chatService.GetChatAsync(UserId, chatDto.ChatId, Tracking: true);
 
-            if (NumRowEff == 0)
-                return BadRequest(new { message = "Chat Not Found" });
+            if (user == null)
+                return Unauthorized();
 
+            if (chat == null)
+                return NotFound();
+
+            bool chatNameUpdated = await _unitServices.chatService.UpdateChatName(chat, chatDto);
+            if (!chatNameUpdated)
+                return StatusCode(500);
+
+            await _unitServices.SaveInDataBaseAsync();
             return Ok();
         }
 
 
-        [HttpDelete("{ChatId:int}")]  // DELETE  api/v1/Chat/{ChatId:int}
+        [HttpDelete("{chatId:int}")]  // DELETE  api/v1/Chat/{ChatId:int}
         public async Task<IActionResult> DeleteChatAsync(int chatId)
         {
             if (chatId <= 0)
-                return BadRequest(new { message = "Invalid chat ID." });
+                return NotFound();
 
-            int userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            User? user = await _unitServices.userService.GetUserAsync(UserId);
+            if (user == null)
+                return Unauthorized();
 
-            var chat = await Context.Chats
-                .FirstOrDefaultAsync(c => c.Id == chatId && c.UserId == userId);
-
+            Chat? chat = await _unitServices.chatService.GetChatAsync(UserId, chatId);
             if (chat is null)
-                return NotFound(new { message = "Chat not found." });
-
-            string? folderPath = chat.ChatFolderPath;
-
-            Context.Chats.Remove(chat);
-            await Context.SaveChangesAsync();
-
-            if (!string.IsNullOrWhiteSpace(folderPath) && Directory.Exists(folderPath))
+                return NotFound();
+            try
             {
-                try
+                await _unitServices.chatService.DeleteChatAsync(chat);
+                await _unitServices.SaveInDataBaseAsync();
+                if (!await _unitServices.chatService.AnyChatsAsync(UserId))
                 {
-                    Directory.Delete(folderPath, recursive: true);
+                    Directory.Delete(Directory.GetParent(chat.ChatFolderPath)!.FullName, recursive: true);
                 }
-                catch (Exception )
-                {
-                    // DB record is already deleted — log the orphaned folder for manual cleanup
-                    // _logger.LogWarning(ex, "Failed to delete chat folder at {Path} for chatId {ChatId}", folderPath, chatId);
-                }
+                return Ok(new { message = "Chat deleted successfully." });
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new { message = "An internal error occurred." });
+
             }
 
-            return Ok(new { message = "Chat deleted successfully." });
-        }
-
-        private static string SanitizeForPath(string? s)
-        {
-            if (string.IsNullOrWhiteSpace(s)) return String.Empty;
-            var invalid = Path.GetInvalidFileNameChars().Concat(Path.GetInvalidPathChars()).Distinct().ToArray();
-            var cleaned = new string(s.Where(ch => !invalid.Contains(ch)).ToArray());
-            return cleaned.Replace(' ', '_');
         }
     }
 }

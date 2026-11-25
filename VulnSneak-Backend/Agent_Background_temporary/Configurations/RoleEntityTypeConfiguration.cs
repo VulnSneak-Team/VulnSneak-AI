@@ -1,4 +1,4 @@
-﻿using Agent_Services.Models;
+﻿using Agent_Background_temporary.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 namespace Agent_Background_temporary.Configurations
@@ -22,8 +22,8 @@ namespace Agent_Background_temporary.Configurations
             builder
                 .HasData(
                 new Role { Id = 1, RoleName = "Admin" },
-                new Role { Id = 2, RoleName = "Manager"},
-                new Role { Id = 3, RoleName = "User"}
+                new Role { Id = 2, RoleName = "Manager" },
+                new Role { Id = 3, RoleName = "User" }
                 );
 
             builder

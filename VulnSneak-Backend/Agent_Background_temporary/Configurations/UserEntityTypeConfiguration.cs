@@ -1,4 +1,4 @@
-﻿using Agent_Services.Models;
+﻿using Agent_Background_temporary.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 namespace Agent_Background_temporary.Configurations
@@ -50,10 +50,10 @@ namespace Agent_Background_temporary.Configurations
                 .WithMany(R => R.Users)
                 .HasForeignKey(U => U.RoleId)
                 .OnDelete(DeleteBehavior.Restrict);
-                
+
             builder
                 .HasMany(U => U.Chats)
-                .WithOne(C =>  C.User)
+                .WithOne(C => C.User)
                 .HasForeignKey(C => C.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
 

@@ -4,7 +4,7 @@
     {
         public int ScanId { get; set; }
         public ScanSession? ScanSession { get; set; }
-        public required string FileReportName { get; set; }
-        public required string FileReportPath { get; set; }
+        public string FileReportName { get; set; } = null!;
+        public string FileReportPath { get; set; } = null!;
     }
 }

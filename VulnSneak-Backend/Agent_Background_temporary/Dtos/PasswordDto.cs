@@ -2,7 +2,7 @@
 
 namespace Agent_Background_temporary.Dtos
 {
-    public class ChangePasswordDto
+    public class PasswordDto
     {
         [Required] public string CurrentPassword { get; set; } = null!;
         [Required, MinLength(8)] public string NewPassword { get; set; } = null!;

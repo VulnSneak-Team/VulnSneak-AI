@@ -1,17 +1,13 @@
-﻿using Agent_Background_temporary.Configurations;
-using Agent_Services.Models;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 
 namespace Agent_Background_temporary.Models
 {
     public class AppDbContext : DbContext
     {
         public AppDbContext() { }
-        public AppDbContext(DbContextOptions<AppDbContext> options)
-            : base(options)
+        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
         }
-
         public virtual DbSet<User> Users { get; set; }
         public virtual DbSet<Role> Roles { get; set; }
         public virtual DbSet<Chat> Chats { get; set; }
@@ -19,8 +15,6 @@ namespace Agent_Background_temporary.Models
         public virtual DbSet<VulnResult> VulnResults { get; set; }
         public virtual DbSet<VulnType> VulnTypes { get; set; }
         public virtual DbSet<FileReport> FileReports { get; set; }
-
-
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
